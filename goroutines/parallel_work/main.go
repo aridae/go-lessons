@@ -41,6 +41,7 @@ func (r *Repository) query(ctx context.Context, query string, args ...any) ([]dt
 	// чтобы завершить дочерние горутины по первой ошибке
 	ctx, cancel := context.WithCancelCause(ctx)
 
+	// чтобы дождаться всех работяг
 	var wg sync.WaitGroup
 	var wgErr error
 	var errOnce sync.Once
