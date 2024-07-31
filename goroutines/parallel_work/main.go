@@ -43,7 +43,6 @@ func (r *Repository) query(ctx context.Context, query string, args ...any) ([]dt
 
 	// чтобы дождаться всех работяг
 	var wg sync.WaitGroup
-	var wgErr error
 	var errOnce sync.Once
 
 	records := make([][]dto, 0, len(r.shards))
@@ -58,8 +57,7 @@ func (r *Repository) query(ctx context.Context, query string, args ...any) ([]dt
 
 			if err := run(ctx, id, db, &records[idx], query, args); err != nil {
 				errOnce.Do(func() {
-					wgErr = err
-					cancel(wgErr)
+					cancel(err)
 				})
 			}
 		}(ctx, i)
@@ -68,8 +66,8 @@ func (r *Repository) query(ctx context.Context, query string, args ...any) ([]dt
 	}
 
 	wg.Wait()
-	if wgErr != nil {
-		return nil, fmt.Errorf("error while query execution: %w", wgErr)
+	if err := context.Cause(ctx); err != nil {
+		return nil, fmt.Errorf("error while query execution: %w", err)
 	}
 
 	var gatheredRecords []dto
@@ -111,10 +109,24 @@ type dto struct {
 	Name string
 }
 
-func (d dto) receivers() []*any {
-	return []*any{pointer(d.ID), pointer(d.Name)}
+func (d *dto) receivers() []*any {
+	id := any(d.ID)
+	name := any(d.Name)
+	return []*any{&id, &name}
 }
 
-func pointer(v any) *any {
-	return &v
-}
+// TODO: разобрать вывод go:noinline
+// v escapes to heap: ...
+// moved to heap: v
+// d.ID escapes to heap
+// d.Name escapes to heap
+// parameter d leaks to {storage for d.Name} with derefs=1
+// []*any{...} escapes to heap
+// leaking param content: d
+// []*any{...} escapes to heap
+// d.ID escapes to heap
+// d.Name escapes to heap
+// ...
+//func pointer(v any) *any {
+//	return &v
+//}
